@@ -1,0 +1,597 @@
+import mysql from './mysql';
+
+export default {
+  fbPopup:null,
+  addUser:async (u) => {
+    await mysql.query('INSERT INTO users (name, avatar) VALUES (?, ?)', [u.name, u.avatar]);
+  },
+  getComputedStyle:async (userId) => {
+
+    let list = [];
+
+    await mysql.query('SELECT * FROM users WHERE id != ?', [userId]);
+    let result = mysql.result;
+
+    for(let i in result) {
+      list.push({
+        id: result[i].id,
+        name: result[i].name,
+        avatar:result[i].avatar
+      });
+    }
+    return list;
+  },
+  addNewChat:async (user, user2) => {
+    await mysql.query('INSERT INTO chats (messages, users) VALUES (?, ?)', [JSON.stringify([]), JSON.stringify([user.id, user2.id])]);
+  },
+  onChatList:(userId, setChtList) => {
+     return mysql.query('SELECT * FROM chats WHERE users LIKE ?', ['%,' + userId + ',%']);
+  },
+  onChatContent:(chatId, setList) => {
+  return mysql.query('SELECT * FROM messages WHERE chatId = ? ORDER BY date DESC', [chatId]);
+},
+sendMessage:async (chatData, userId, type, body, users) => {
+  let now = new Date ();
+
+  await mysql.query('INSERT INTO messages (type, author, body, date, chatId) VALUES (?, ?, ?, ?, ?)', [type, userId, body, now, chatData.chatId]);
+     for(let i in users) {
+      let u = await mysql.query('SELECT * FROM users WHERE id = ?', [users[i]]);
+      let uData = u[0];
+      if(uData.chats) {
+        let chats = [...uData.chats];
+
+        for(let e in chats) {
+          if(chats[e].chatId == chatData.chatId) {
+            chats[e].lastMessage = body;
+            chats[e].lastMessageDate = now;
+          }
+        }
+        await mysql.query('UPDATE users SET chats = ? WHERE id = ?', [JSON.stringify(chats), users[i]]);
+      } 
+    }
+  }
+};
+import React, { useState, useEffect } from "react";
+import './App.css';
+
+import Api from "./Api";
+
+import ChatListitem from "./components/ChatListitem";
+import Chatintro from "./components/Chatintro";
+import Chatwindow from './components/Chatwindow';
+import NewChat from "./components/NewChat";
+import Login from "./components/Login";
+
+import DonutLargeIcon from '@mui/icons-material/DonutLarge';
+import ChatIcon from '@mui/icons-material/Chat';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import SearchIcon from '@mui/icons-material/Search';
+
+export default () => {
+  const [chatlist, setChatlist] = useState([]);
+  const [activeChat, setActiveChat] = useState({});
+  const [user, setUser] = useState(null);
+  const [showNewChat, setShowNewChat] = useState(false);
+
+  useEffect(() => {
+    if (user !== null) {
+      let unsub = Api.onChatList(user.id, setChatlist);
+      return unsub;
+    }
+  }, [user]);
+
+  const handleNewChat = () => {
+    setShowNewChat(true);
+  };
+
+  const handleLoginData = async (u) => {
+    let newUser = {
+      id: u.uid,
+      name: u.displayName,
+      avatar: u.photoURL
+    };
+    await Api.addUser(newUser);
+    setUser(newUser);
+  };
+
+  if (user === null) {
+    return (<Login onReceive={handleLoginData} />);
+  }
+
+  return (
+    <div className="app-window">
+      <div className="sidebar">
+        <NewChat
+          chatlist={chatlist}
+          user={user}
+          show={showNewChat}
+          setShow={setShowNewChat}
+        />
+        <header>
+          <img className="header--avatar" src={user.avatar} alt=""/>
+          <div className="header--buttons">
+            <div className="header--btn">
+              <DonutLargeIcon style={{ color: "#919191" }} />
+            </div>
+            <div
+              onClick={handleNewChat}
+              className="header--btn"
+            >
+              <ChatIcon style={{ color: "#919191" }} />
+            </div>
+            <div className="header--btn">
+              <MoreVertIcon style={{ color: "#919191" }} />
+            </div>
+          </div>
+        </header>
+        <div className="search">
+          <div className="search--input">
+            <SearchIcon fontSize="small" style={{ color: "#919191" }} />
+            <input
+              type="search"
+              placeholder="Procurar ou começar uma nova conversa"
+            />
+          </div>
+        </div>
+        <div className="chatlist">
+          {chatlist.map((item, key) => (
+            <ChatListitem
+              key={key}
+              data={item}
+              active={activeChat.chatId === chatlist[key].chatId}
+              onClick={() => setActiveChat(chatlist[key])}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="contentarea">
+        {activeChat.chatId !== undefined && (
+          <Chatwindow user={user} data={activeChat} />
+        )}
+        {activeChat.chatId === undefined && <Chatintro />}
+      </div>
+    </div>
+  );
+};
+import React, { Component } from "react";
+
+class App extends Component {
+  state = {
+    count: 0,
+  };
+
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      this.setState({
+        count: this.state.count + 1,
+      });
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.timer);
+  }
+
+  render() {
+    return (
+      <div>
+        <h1>Count: {this.state.count}</h1>
+      </div>
+    );
+  }
+}
+
+export default App;
+// Nombre del archivo: export.js
+
+// Importar el módulo mysql
+const mysql = require("mysql");
+
+// Conectarse a la base de datos
+const connection = mysql.createConnection({
+  host: "localhost",
+  user: "root",
+  password: "ysmy.12",
+  database: ""
+});
+
+connection.connect();
+
+// Obtener los datos de la tabla
+const query = "SELECT * FROM table";
+const result = await connection.query(query);
+
+// Crear un archivo CSV
+const file = await new FileWriter("table.csv");
+
+// Escribir los encabezados de la tabla
+const headers = result.fields;
+file.write(", ".join(headers));
+
+// Escribir los datos de la tabla
+for (const row of result.rows) {
+  file.write(", ".join(row));
+}
+
+// Cerrar el archivo CSV
+file.close();
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import mysql from './mysql';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App mysql={mysql} />
+  </React.StrictMode>
+);
+import React, { useState ,  useEffect } from "react";
+import mysql from "./mysql";
+import Api from "./Api";
+
+export default function App() {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    Api.getUsers().then((data) => {
+      setUsers(data);
+    });
+  }, []);
+
+  return (
+    <div>
+      <h1>Mysql App</h1>
+      <ul>
+        {users.map((user) => (
+          <li key={user.id}>{user.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+import React from "react";
+import './Chatintro.css';
+
+export default () => {
+  return (
+    <div className="chatintro">
+      <img src="https://media.istockphoto.com/id/1266829551/es/vector/icono-vectorial-de-chat-de-caf%C3%A9-y-burbuja-se%C3%B1al-de-descanso-de-caf%C3%A9-chat-caf%C3%A9-hablando.jpg?s=170x170&k=20&c=xLV3faiZQQpT22H9zqmLGi14dltdHQ9rCIHKhDfBBvo=" alt="" />
+      <h1>Bem-vindo ao Chatcoffee</h1>
+      <h2>Vamos começar a conversar</h2>
+    </div>
+  );
+};
+import React, { useState, useEffect } from "react";
+import './ChatListitem.css';
+
+
+export default ({ onClick, active, data }) => {
+
+  const [time, setTime] = useState('');
+
+  useEffect(() => {
+    if (data.lastMessageDate > 0) {
+      let d = new Date(data.lastMessageDate * 1000);
+      let hours = d.getHours();
+      let minutes = d.getMinutes();
+      hours = hours < 10 ? `0${hours}` : hours;
+      minutes = minutes < 10 ? `0${minutes}` : minutes;
+      setTime(`${hours}:${minutes}`);
+    }
+  }, [data]);
+
+  return (
+    <div
+      className={
+        'chatListitem ' +
+        (active ? 'active' : '')
+      }
+      onClick={onClick}
+    >
+      <img
+        className="chatListitem--avatar"
+        src={data.image}
+        alt=""
+      />
+      <div className="chatListitem--lines">
+        <div className="chatListitem--line">
+          <div className="chatListitem--name">{data.title}</div>
+          <div className="chatListitem--date">{time}</div>
+        </div>
+        <div className="chatListitem--line">
+          <div className="chatListitem--lastMsg">
+            <p>{data.lastMessage}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+import React, { useState, useEffect, useRef } from "react";
+import EmojiPicker from 'emoji-picker-react';
+import './Chatwindow.css';
+
+import Api from "../Api";
+
+import MessageItem from './MessageItem';
+
+import SearchIcon from '@mui/icons-material/Search';
+import AttachFileIcon from '@mui/icons-material/AttachFile';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
+import CloseIcon from '@mui/icons-material/Close';
+import SendIcon from '@mui/icons-material/Send';
+import MicIcon from '@mui/icons-material/Mic';
+
+export default function Chatwindow ({ users, data })  {
+
+  const body = useRef();
+
+  let recognition = null;
+  let SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(SpeechRecognition !== undefined) {
+    recognition = new SpeechRecognition();
+  }
+
+  const [emojiOpen, setEmojiOpem] = useState(false);
+  const [text, setText] = useState('');
+  const [listening, setListening] = useState(false);
+  const [list, setList] = useState([]);
+  const [user, setUsers] = useState([]);
+
+  useEffect(()=>{
+     setList([]);
+     let unsub = Api.onChatContent(data.chatId, setList, setUsers);
+     return unsub;
+  }, [data.chatId]);
+
+  useEffect(()=>{
+    if(body.current.scrollHeight > body.current.offsetHeight) {
+        body.current.scrollTop = body.current.scrollHeight - body.current.offsetHeight;
+    }
+  }, [list]);
+
+  const handleEmojiClick = (e, emojiObject) => {
+    setText( text + emojiObject.emoji );
+  };
+
+  const handleOpenEmoji = () => {
+    setEmojiOpem(true);
+  };
+
+  const heandleCloseEmoji = () => {
+    setEmojiOpem(false);
+  };
+
+  const handleMicClick = () => {
+    if (recognition !== null) {
+      recognition.onstart = () => {
+        setListening(true);
+      };
+      recognition.onend = () => {
+        setListening(false);
+      };
+      recognition.onresult = (e) => {
+        setText(e.results[0][0].transcript);
+      };
+      recognition.start();
+    }
+  };
+  const  handleInputKeyUp = (e) => {
+      if(e.keyCode == 13) {
+        handleSendClick();
+      }
+  }
+  const handleSendClick = () => {
+      if(text !== '') {
+        Api.sendMessage(data, user.id, 'text', text, users);
+        setText('');
+        setEmojiOpem(false);
+      }
+  };
+
+  return (
+    <div className="chatwindow">
+      <div className="chatwindow--header">
+        <div className="chatwindow--headerinfo">
+          <img className="chatwindow--avatar" src={data.image} alt="" />
+          <div className="chatwindow--name">{data.title}</div>
+        </div>
+
+        <div className="chatwindow--headerbuttons">
+          <div className="chatwindow--btm">
+            <SearchIcon style={{ color: "#919191" }} />
+          </div>
+
+          <div className="chatwindow--btm">
+            <AttachFileIcon style={{ color: "#919191" }} />
+          </div>
+
+          <div className="chatwindow--btm">
+            <MoreVertIcon style={{ color: "#919191" }} />
+          </div>
+
+        </div>
+      </div>
+      <div ref={body} className="chatwindow--body">
+        {list.map((item, key)=>(
+            <MessageItem
+               key={key}
+               data={item}
+               user={user}
+              />
+          ))}
+      </div>
+      <div className="chatwindow--emojiarea"
+       style={{height: emojiOpen ? '200px' : '0px'}}>
+        <EmojiPicker
+          onEmojiClick={handleEmojiClick}
+          disableSearchBar
+          disableSkinTonePicker
+        />
+      </div>
+
+      <div className="chatwindow--footer">
+        <div className="chatwindow--pre">
+
+          <div
+            className="chatwindow--btm"
+            onClick={heandleCloseEmoji}
+            style={{width: emojiOpen ? 40 : 0}}
+          >
+            <CloseIcon style={{color: '#919191'}} />
+          </div>
+
+          <div
+            className="chatwindow--btm"
+            onClick={handleOpenEmoji}
+            style={{color: emojiOpen ? '#009688' : '#919191'}}
+          >
+            <InsertEmoticonIcon style={{color: emojiOpen ? '#009688' : '#919191'}} />
+          </div>
+        </div>
+
+        <div className="chatwindow--inputarea">
+          <input
+            className="chatwindow--input"
+            type="text"
+            placeholder="Digite uma mensagem"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyUp={handleInputKeyUp}
+          />
+        </div>
+
+        <div className="chatwindow--pos">
+ 
+          {text === '' &&
+          <div onClick={handleMicClick} className="chatwindow--btm">
+            <MicIcon style={{color: listening ? '#126ECE' : '#919191'}} />
+          </div>
+           }
+           {text !== '' &&
+          <div onClick={handleSendClick} className="chatwindow--btm">
+            <SendIcon style={{color: '#919191'}} />
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  );
+};
+import React from "react";
+import './Login.css';
+import Api from "../Api";
+
+export default ({onReceive}) => {
+  const handleFacebookLogin = async () => {
+    try {
+      const result = await Api.fbPopup();
+      if (result) {
+        onReceive(result.user);
+      } else {
+        alert("Erro!");
+      }
+    } catch (error) {
+      console.log(error);
+      alert("Erro ao realizar login com Facebook!");
+    }
+  };
+
+  return (
+    <div className="login">
+      <button onClick={handleFacebookLogin}>Logar com Facebook</button>
+    </div>
+  );
+};
+import React, { useState, useEffect } from "react";
+import './MessageItem.css';
+
+export default ({data, user}) => {
+
+  const [time, setTime] = useState('');
+
+  useEffect(() => {
+    if (data.date > 0) {
+      const d = new Date(data.date * 1000);
+      const hours = d.getHours();
+      const minutes = d.getMinutes();
+      hours = hours < 10 ? `0${hours}` : hours;
+      minutes = minutes < 10 ? `0${minutes}` : minutes;
+      setTime(`${hours}:${minutes}`);
+    }
+  }, [data]);
+
+  return (
+    <div
+      className="messageLine"
+      style={{
+        justifyContent: user.id === data.author ? "flex-end" : "flex-start",
+      }}
+    >
+      <div
+        className="messageItem"
+        style={{
+          backgroundColor: user.id === data.author ? "#5fffc2c7" : "#FFF",
+        }}
+      >
+        <div className="messageText">{data.body}</div>
+        <div className="messageDate">{time}</div>
+      </div>
+    </div>
+  );
+};
+import React, { useState, useEffect } from "react";
+import './NewChat.css';
+
+import Api from "../Api";
+
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+
+export default ({user, chatlist, show, setShow}) => {
+  const [list, setList] = useState([]);
+
+  useEffect(() => {
+    const getList = async () => {
+      if (user !== null) {
+        let result = await Api.getContactList(user.id);
+        setList(result);
+      }
+    };
+    getList();
+  }, [user]);
+
+  const addNewChat = async (user2) => {
+    await Api.addNewChat(user, user2);
+    setShow(false);
+  };
+
+  const handleClose = () => {
+    setShow(false);
+  };
+
+  return (
+    <div className="newChat" style={{ left: show ? 0 : -415 }}>
+      <div className="newChat--head">
+        <div onClick={handleClose} className="newChat--backbutton">
+          <ArrowBackIcon style={{ color: '#fff' }} />
+        </div>
+        <div className="newChat--headtitle">Nova Conversa</div>
+      </div>
+      <div className="newChat--list">
+        {list.map((item, key) => (
+          <div
+            onClick={() => addNewChat(item)}
+            className="newChat--item"
+            key={key}
+          >
+            <img className="newChat--itemavatar" src={item.avatar} alt="" />
+            <div className="newChat--itemname">{item.name}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
